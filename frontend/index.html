@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Control panel for triggering backend APIs that simulate sending WhatsApp messages for a hackathon demo.">
+    <title>Agentic Hub Control Panel</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="header">
+            <h1>📊 Agentic Hub Control Panel</h1>
+            <p>Trigger WhatsApp notifications for demo</p>
+        </header>
+
+        <main class="buttons-container">
+            <button id="btn-attendance" class="btn btn-green">
+                📅 Send Daily Attendance
+            </button>
+            
+            <button id="btn-report" class="btn btn-blue">
+                📈 Send Monthly Report
+            </button>
+        </main>
+
+        <section class="status-panel">
+            <div id="status-text" class="status-text">Click a button to trigger WhatsApp message...</div>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

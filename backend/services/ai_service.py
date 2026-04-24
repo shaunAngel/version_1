@@ -20,23 +20,21 @@ def detect_intent(message):
                     "content": """
 You are an intent classifier for a school chatbot.
 
-Classify the message into ONE of these intents:
+Classify the message into ONE word from:
 attendance, report, fee, counselling, holiday, transport, unknown
 
-Examples:
-- "how is my child doing" → report
-- "show performance" → report
-- "marks" → report
-- "progress report" → report
-- "attendance today" → attendance
-- "is he absent" → attendance
-- "fees pending" → fee
-- "any payment due" → fee
-- "need help" → counselling
-- "talk to counsellor" → counselling
-- "bus details" → transport
+Understand both English and Telugu.
 
-Return ONLY the intent word.
+Examples:
+"attendance" → attendance
+"how is attendance" → attendance
+"నా పిల్ల హాజరు ఎంత" → attendance
+"report card" → report
+"రిపోర్ట్ చూపించు" → report
+"fees pending" → fee
+"ఫీజు ఎంత" → fee
+
+Return ONLY one word.
 """
                 },
                 {"role": "user", "content": message}
@@ -49,27 +47,21 @@ Return ONLY the intent word.
     except Exception as e:
         print("Intent AI Error:", e)
 
-        # 🔥 STRONG FALLBACK (VERY IMPORTANT)
         msg = message.lower()
 
-        if any(x in msg for x in ["attendance", "absent", "present"]):
+        # 🔥 ADD TELUGU KEYWORDS HERE
+        if "attendance" in msg or "హాజరు" in msg:
             return "attendance"
-
-        elif any(x in msg for x in ["report", "marks", "performance", "doing", "progress"]):
+        elif "report" in msg or "రిపోర్ట్" in msg:
             return "report"
-
-        elif "fee" in msg or "payment" in msg:
+        elif "fee" in msg or "ఫీజు" in msg:
             return "fee"
-
-        elif any(x in msg for x in ["counselling", "help", "support"]):
+        elif "counselling" in msg or "సహాయం" in msg:
             return "counselling"
-
-        elif "holiday" in msg:
+        elif "holiday" in msg or "సెలవు" in msg:
             return "holiday"
-
-        elif any(x in msg for x in ["bus", "transport"]):
+        elif "bus" in msg or "transport" in msg or "బస్" in msg:
             return "transport"
-
         else:
             return "unknown"
 
@@ -138,3 +130,9 @@ Give a short 2-line performance insight for parents.
         msg += "."
 
         return msg
+def detect_language(message):
+    # simple Telugu unicode check
+    for ch in message:
+        if '\u0C00' <= ch <= '\u0C7F':
+            return "telugu"
+    return "english"       
