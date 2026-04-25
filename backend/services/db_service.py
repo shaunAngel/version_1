@@ -24,4 +24,9 @@ def get_results(student_id):
 
 
 def get_profile(student_id):
-    return supabase.table("student_profile").select("*").eq("student_id", student_id).execute().data[0]
+    result = supabase.table("student_profile").select("*").eq("student_id", student_id).execute().data
+
+    if not result:
+        return None
+
+    return result[0]

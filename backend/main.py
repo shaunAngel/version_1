@@ -1,12 +1,10 @@
 import os
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, Request, Body
+from fastapi import FastAPI, Request
 from fastapi.responses import Response, FileResponse
 from twilio.twiml.messaging_response import MessagingResponse
-from twilio.rest import Client
 
 from services.ai_service import generate_ai_insight, detect_intent
-
 from services.db_service import (
     get_parent_by_phone,
     get_children,
@@ -14,7 +12,6 @@ from services.db_service import (
     get_attendance,
     get_profile
 )
-
 from services.pdf_service import generate_pdf
 
 app = FastAPI()
@@ -30,24 +27,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# =========================
-# 🌐 LANGUAGE DETECTION
-# =========================
-def detect_language(message):
-    for ch in message:
-        if '\u0C00' <= ch <= '\u0C7F':
-            return "telugu"
-    return "english"
-
-
 # =========================
 # 🏠 HOME
 # =========================
 @app.get("/")
 def home():
     return {"message": "Backend running 🚀"}
-
 
 # =========================
 # 📄 SERVE PDF
@@ -56,55 +41,42 @@ def home():
 def get_pdf(filename: str):
     return FileResponse(filename, media_type='application/pdf')
 
+# =========================
+# 📅 SEND ATTENDANCE
+# =========================
+@app.get("/send-attendance")
+def send_attendance():
+    print("\n===== ATTENDANCE GENERATED =====")
+
+    attendance_text = """📊 Daily Attendance Report:
+
+Name: Akash
+Roll No: A123
+Class: 5 | Section: A
+
+Math → PRESENT
+Science → ABSENT
+
+Overall Attendance: 50.0%
+"""
+    print(attendance_text)
+
+    return {"status": "success"}
 
 # =========================
-# 📲 GENERIC WHATSAPP SEND
-# =========================
-@app.post("/send-message")
-def send_message(data: dict = Body(...)):
-    try:
-        to_number = data.get("phone")
-        message = data.get("message")
-
-        if not to_number.startswith("+"):
-            to_number = "+" + to_number
-
-        client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN")
-        )
-
-        client.messages.create(
-            from_=os.getenv("TWILIO_WHATSAPP_NUMBER"),
-            body=message,
-            to=f"whatsapp:{to_number}"
-        )
-
-        return {"status": "sent"}
-
-    except Exception as e:
-        print("SEND MESSAGE ERROR:", e)
-        return {"status": "failed"}
-
-
-# =========================
-# 📄 SEND REPORT (FRONTEND)
+# 📄 SEND REPORT
 # =========================
 @app.post("/send-report")
-def send_report(data: dict = Body(...)):
+def send_report():
     try:
-        phone = data.get("phone")
+        student = {"username": "Akash"}
+        profile = {
+            "math_score": 80,
+            "science_score": 75,
+            "english_score": 85
+        }
 
-        if not phone.startswith("+"):
-            phone = "+" + phone
-
-        parent = get_parent_by_phone(phone)
-        if not parent:
-            return {"status": "failed"}
-
-        student_id = get_children(parent["id"])[0]
-        student = get_student(student_id)
-        profile = get_profile(student_id)
+        attendance_percent = 50.0
 
         pdf_path = generate_pdf(student['username'], {
             "math": profile['math_score'],
@@ -114,11 +86,12 @@ def send_report(data: dict = Body(...)):
 
         pdf_url = f"https://spruce-dab-catnip.ngrok-free.dev/pdf/{pdf_path}"
 
-        ai_feedback = generate_ai_insight(student, profile)
+        ai_feedback = "Akash is strong in Math, good in Science, doing well in English."
 
         message = f"""📄 Student Report Card
 
 Name: {student['username']}
+Cumulative Attendance: {attendance_percent}%
 
 Subjects:
 - Math: {profile['math_score']}%
@@ -132,16 +105,8 @@ Subjects:
 {pdf_url}
 """
 
-        client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN")
-        )
-
-        client.messages.create(
-            from_=os.getenv("TWILIO_WHATSAPP_NUMBER"),
-            body=message,
-            to=f"whatsapp:{phone}"
-        )
+        print("\n===== REPORT GENERATED =====")
+        print(message)
 
         return {"status": "success"}
 
@@ -149,9 +114,18 @@ Subjects:
         print("SEND REPORT ERROR:", e)
         return {"status": "failed"}
 
+## =========================
+# 🌐 LANGUAGE DETECTION
+# =========================
+def detect_language(message):
+    for ch in message:
+        if '\u0C00' <= ch <= '\u0C7F':
+            return "telugu"
+    return "english"
+
 
 # =========================
-# 🤖 TWILIO WEBHOOK
+# 🤖 WEBHOOK
 # =========================
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -159,10 +133,9 @@ async def webhook(request: Request):
 
     msg = form.get("Body", "")
     intent = detect_intent(msg)
-    lang = detect_language(msg)
+    language = detect_language(msg)   # 🔥 NEW LINE
 
     sender = form.get("From").replace("whatsapp:", "")
-
     resp = MessagingResponse()
 
     parent = get_parent_by_phone(sender)
@@ -175,106 +148,38 @@ async def webhook(request: Request):
     student = get_student(student_id)
     profile = get_profile(student_id)
 
+    if not profile:
+        resp.message("❌ Student data not found")
+        return Response(str(resp), media_type="application/xml")
+
     # =========================
     # 📊 ATTENDANCE
     # =========================
     if intent == "attendance":
         data = get_attendance(student_id)
-
         present = sum(1 for d in data if d["status"] == "PRESENT")
         total = len(data)
-        percent = round((present/total)*100, 2)
+        percent = round((present / total) * 100, 2)
 
-        if lang == "telugu":
-            reply = f"""📊 హాజరు నివేదిక:
+        if language == "telugu":
+            reply = f"""📊 హాజరు నివేదిక
 
 పేరు: {student['username']}
-రోల్ నం: {profile['roll_number']}
-తరగతి: {student['class']} | విభాగం: A
-
-మొత్తం హాజరు: {percent}%
-"""
+హాజరు: {percent}%"""
         else:
-            reply = f"""📊 Daily Attendance Report:
+            reply = f"""📊 Attendance Report
 
 Name: {student['username']}
-Roll No: {profile['roll_number']}
-Class: {student['class']} | Section: A
-
-Overall Attendance: {percent}%
-"""
-
-    # =========================
-    # 💰 FEES
-    # =========================
-    elif intent == "fee":
-        if lang == "telugu":
-            reply = """💰 ఫీజు సమాచారం:
-
-మీ పిల్లకు ₹25,000 ఫీజు బాకీ ఉంది.
-చెల్లించవలసిన తేది: 30 సెప్టెంబర్
-
-దయచేసి ఆలస్యం కాకుండా చెల్లించండి.
-
-📞 సహాయం: +91 9123456780
-"""
-        else:
-            reply = """💰 Fee Update:
-
-Your ward has a pending fee balance of ₹25,000.
-Due Date: 30 September.
-
-Kindly clear the dues.
-
-📞 Contact: +91 9123456780
-"""
-
-    # =========================
-    # 🧠 COUNSELLING
-    # =========================
-    elif intent == "counselling":
-        if lang == "telugu":
-            reply = f"""🧠 కౌన్సెలింగ్ సూచన:
-
-మీ పిల్ల {student['username']} చదువులో కొన్ని సవాళ్లు ఎదుర్కొంటున్నారు.
-
-మేము కౌన్సెలింగ్ సూచిస్తున్నాము.
-
-📞 కౌన్సెలర్: +91 9876543210
-"""
-        else:
-            reply = f"""🧠 Counselling Recommendation:
-
-Your ward {student['username']} is facing academic challenges.
-
-We recommend counselling.
-
-📞 Counsellor: +91 9876543210
-"""
-
-    # =========================
-    # 🚌 TRANSPORT
-    # =========================
-    elif intent == "transport":
-        if lang == "telugu":
-            reply = """🚌 రవాణా సమాచారం:
-
-బస్ నం: TS09 AB 1234
-
-📞 డ్రైవర్: +91 9012345678
-"""
-        else:
-            reply = """🚌 Transport Information:
-
-Bus No: TS09 AB 1234
-
-📞 Driver: +91 9012345678
-"""
+Attendance: {percent}%"""
 
     # =========================
     # 📄 REPORT
     # =========================
     elif intent == "report":
+        data = get_attendance(student_id)
+        present = sum(1 for d in data if d["status"] == "PRESENT")
+        total = len(data)
+        percent = round((present / total) * 100, 2)
 
         pdf_path = generate_pdf(student['username'], {
             "math": profile['math_score'],
@@ -283,17 +188,18 @@ Bus No: TS09 AB 1234
         })
 
         pdf_url = f"https://spruce-dab-catnip.ngrok-free.dev/pdf/{pdf_path}"
-
         ai_feedback = generate_ai_insight(student, profile)
 
-        if lang == "telugu":
-            reply = f"""📄 విద్యార్థి రిపోర్ట్
+        if language == "telugu":
+            reply = f"""📄 రిపోర్ట్ కార్డ్
 
 పేరు: {student['username']}
+మొత్తం హాజరు: {percent}%
 
-గణితం: {profile['math_score']}%
-సైన్స్: {profile['science_score']}%
-ఇంగ్లీష్: {profile['english_score']}%
+విషయాలు:
+- గణితం: {profile['math_score']}%
+- సైన్స్: {profile['science_score']}%
+- ఇంగ్లీష్: {profile['english_score']}%
 
 🧠 విశ్లేషణ:
 {ai_feedback}
@@ -305,6 +211,7 @@ Bus No: TS09 AB 1234
             reply = f"""📄 Student Report Card
 
 Name: {student['username']}
+Cumulative Attendance: {percent}%
 
 Subjects:
 - Math: {profile['math_score']}%
@@ -319,16 +226,98 @@ Subjects:
 """
 
     # =========================
+    # 💰 FEES
+    # =========================
+    elif intent == "fee":
+        if language == "telugu":
+            reply = """💰 ఫీజు సమాచారం:
+
+మీ పిల్లకు ₹2,05,000 ఫీజు బాకీ ఉంది.
+చెల్లించవలసిన తేది: 25 ఏప్రిల్
+
+దయచేసి ఆలస్యం కాకుండా చెల్లించండి.
+
+📞 సహాయం: +91 9123456780
+"""
+        else:
+            reply = """💰 Fee Update:
+
+Your ward has a pending fee balance of ₹2,05,000.
+Due Date: 25 April.
+
+Kindly clear the dues at the earliest to avoid late penalties.
+
+📞 For assistance, please contact the Front Office: +91 9123456780
+"""
+
+    # =========================
+    # 🧠 COUNSELLING
+    # =========================
+    elif intent == "counselling":
+        if language == "telugu":
+            reply = """🧠 కౌన్సెలింగ్ సూచన:
+
+మీ పిల్లవాడు ఇటీవల కొంత విద్యా మరియు ప్రవర్తనా సమస్యలను ఎదుర్కొంటున్నాడు.
+
+మా ఉపాధ్యాయులు అదనపు మార్గదర్శకం అవసరం ఉందని గమనించారు.
+
+📞 కౌన్సిలర్: +91 9876543210
+🕘 సమయం: 9 AM – 4 PM
+
+మీ పిల్లవారి అభివృద్ధికి మేము ఎల్లప్పుడూ మీతో ఉన్నాము.
+"""
+        else:
+            reply = """🧠 Counselling Recommendation:
+
+We would like to bring to your attention that your ward, Akash, has been facing certain academic and behavioral challenges.
+
+We strongly recommend scheduling a session with the school counsellor.
+
+📞 Counsellor Contact: +91 9876543210
+🕘 Available Hours: 9:00 AM – 4:00 PM
+"""
+
+    # =========================
+    # 🚌 TRANSPORT
+    # =========================
+    elif intent == "transport":
+        if language == "telugu":
+            reply = """🚌 రవాణా సమాచారం:
+
+మీ పిల్లవాడు ఈ బస్సుకు కేటాయించబడ్డారు:
+
+బస్ నం: TS09 AB 1234
+
+📞 డ్రైవర్ సంప్రదింపు: +91 9012345678
+"""
+        else:
+            reply = """🚌 Transport Information:
+
+Your ward is assigned to Bus No: TS09 AB 1234
+
+📞 Driver Contact: +91 9012345678
+"""
+
+    # =========================
     # 🎉 HOLIDAY
     # =========================
     elif intent == "holiday":
-        if lang == "telugu":
-            reply = "🎉 సెలవుల జాబితా అందుబాటులో ఉంది."
+        if language == "telugu":
+            reply = """🎉 సెలవు సమాచారం:
+
+రేపు పాఠశాలకు సెలవు ఉంది.
+"""
         else:
-            reply = "🎉 Holiday list available."
+            reply = """🎉 Holiday Notice:
+
+Tomorrow is declared a holiday due to a school event.
+"""
 
     else:
-        reply = "Try: attendance / fee / counselling / holiday / report / transport"
+        reply = "Try: attendance / report / fees / transport / counselling"
+
+    print("\n===== WHATSAPP REPLY =====")
+    print(reply)
 
     resp.message(reply)
     return Response(str(resp), media_type="application/xml")
